@@ -13,7 +13,7 @@ struct R {
 } resource;
 
 struct manager_t {
-    pthread_mutex_t mutexReset, mutexA, mutexB, mutexCountAB;
+    pthread_mutex_t mutexReset, mutexA, mutexB;
     pthread_cond_t condAB, condReset;
 
     Boolean isResetWait;
@@ -28,7 +28,6 @@ void initManager(struct manager_t *manager){
     pthread_mutex_init(&manager->mutexReset, &mutexAttr);
     pthread_mutex_init(&manager->mutexA, &mutexAttr);
     pthread_mutex_init(&manager->mutexB, &mutexAttr);
-    pthread_mutex_init(&manager->mutexCountAB, &mutexAttr);
     pthread_mutexattr_destroy(&mutexAttr);
 
     pthread_condattr_init(&condAttr);
@@ -48,8 +47,8 @@ void initR(struct R *resource){
 void procA(struct manager_t *manager, struct R *resource){
     pthread_mutex_lock(&manager->mutexA);
 
+    pthread_mutex_lock(&manager->mutexReset);
     if(manager->isResetWait) {
-        pthread_mutex_lock(&manager->mutexReset);
         manager->countABWaiting++;
         if(manager->countABWaiting == 1)
             pthread_cond_signal(&manager->condReset);
@@ -58,6 +57,7 @@ void procA(struct manager_t *manager, struct R *resource){
         while(manager->isResetWait)
             pthread_cond_wait(&manager->condAB, &manager->mutexA);
     }
+    pthread_mutex_unlock(&manager->mutexReset);
 
     printf("Resource a value = %d\n", ++resource->a);
 
@@ -67,16 +67,16 @@ void procA(struct manager_t *manager, struct R *resource){
 void procB(struct manager_t *manager, struct R *resource){
     pthread_mutex_lock(&manager->mutexB);
 
+    pthread_mutex_lock(&manager->mutexReset);
     if(manager->isResetWait){
-        pthread_mutex_lock(&manager->mutexReset);
         manager->countABWaiting++;
         if(manager->countABWaiting == 1)
             pthread_cond_signal(&manager->condReset);
-        pthread_mutex_unlock(&manager->mutexReset);
 
         while(manager->isResetWait)
             pthread_cond_wait(&manager->condAB, &manager->mutexB);
     }
+    pthread_mutex_unlock(&manager->mutexReset);
 
     printf("Resource b value = %d\n", ++resource->b);
     
