@@ -72,13 +72,12 @@ void reqQ(struct manager_t *manager, int id){
 
     int v;
     sem_getvalue(&manager->semA, &v);
-    if(v) {
-        sem_post(&manager->mutex);
+    if(v)
         getA(manager, id);
-    } else {
-        sem_post(&manager->mutex);
+    else
         getB(manager, id);
-    }
+
+    sem_post(&manager->mutex);
 }
 
 void reqA(struct manager_t *manager, int id){
