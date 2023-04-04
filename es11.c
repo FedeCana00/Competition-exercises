@@ -103,15 +103,17 @@ void reporting(struct manager_t *manager, int id){
     if(v)
         blockReporting(manager, id, v);
     else { // check if there are other threads blocked
-        int count = 0;
-        for(int i = 0; i < N; i++)
+        int count = 0, i = 0;
+        for(i = 0; i < N; i++)
             if(manager->semReporting[i].isBlocked){
                 count++;
                 break;
             }
 
-        if(count)
+        if(count && i < id){
+            reportA(manager);
             blockReporting(manager, id, v);
+        }
     }
 
     sem_post(&manager->semR);
