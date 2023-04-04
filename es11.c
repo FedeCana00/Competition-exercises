@@ -72,7 +72,6 @@ void headA(struct manager_t *manager, int id){
 void *exeReported(void *arg){
     for(;;){
         headA(&manager, (int) arg);
-        reportA(&manager);
         microPause();
     }
     
