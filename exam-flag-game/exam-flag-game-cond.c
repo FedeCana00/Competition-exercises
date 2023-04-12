@@ -14,17 +14,25 @@
 typedef enum {false, true} Boolean;
 
 struct manager_t {
-    sem_t mutex;
-    sem_t semWaitRunner, semWaitRefree, semResultRefree;
+    pthread_mutex_t mutex;
+    pthread_cond_t condWaitRunner, condWaitRefree, condResultRefree;
 
     int winner, ready, whoCaughtFlag;
 } manager;
 
 void initManager(struct manager_t *manager){
-    sem_init(&manager->mutex, 0, 1);
-    sem_init(&manager->semWaitRunner, 0, 0);
-    sem_init(&manager->semWaitRefree, 0, 0);
-    sem_init(&manager->semResultRefree, 0, 0);
+    pthread_mutexattr_t mutexAttr;
+    pthread_condattr_t condAttr;
+
+    pthread_mutexattr_init(&mutexAttr);
+    pthread_mutex_init(&manager->mutex, &mutexAttr);
+    pthread_mutexattr_destroy(&mutexAttr);
+
+    pthread_condattr_init(&condAttr);
+    pthread_cond_init(&manager->condWaitRunner, &condAttr);
+    pthread_cond_init(&manager->condWaitRefree, &condAttr);
+    pthread_cond_init(&manager->condResultRefree, &condAttr);
+    pthread_condattr_destroy(&condAttr);
 
     manager->winner = NONE;
     manager->whoCaughtFlag = NONE;
@@ -39,16 +47,26 @@ void microPause(void) {
 }
 
 void refreeWaitsStart(struct manager_t *manager){
-    sem_wait(&manager->semWaitRefree);
+    pthread_mutex_lock(&manager->mutex);
+
+    while(manager->ready != RUNNERS)
+        pthread_cond_wait(&manager->condWaitRefree, &manager->mutex);
+
+    pthread_mutex_unlock(&manager->mutex);
 }
 
 void refreeStart(struct manager_t *manager){
-    sem_post(&manager->semWaitRunner);
-    sem_post(&manager->semWaitRunner);
+    pthread_cond_broadcast(&manager->condWaitRunner);
 }
 
 int refreeResult(struct manager_t *manager){
-    sem_wait(&manager->semResultRefree);
+    pthread_mutex_lock(&manager->mutex);
+
+    while(manager->winner == NONE)
+        pthread_cond_wait(&manager->condResultRefree, &manager->mutex);
+
+    pthread_mutex_unlock(&manager->mutex);
+
     return manager->winner;
 }
 
@@ -64,56 +82,59 @@ void *refree(void *arg){
 }
 
 void runnerWaitsStart(struct manager_t *manager, int id){
-    sem_wait(&manager->mutex);
+    pthread_mutex_lock(&manager->mutex);
 
-    if(++manager->ready == RUNNERS)
-        sem_post(&manager->semWaitRefree);
-    printf("[RUNNER %d] I'm ready to start\n", id);
-    sem_post(&manager->mutex);
-    sem_wait(&manager->semWaitRunner);
+    while (manager->ready != RUNNERS){
+        if(++manager->ready == RUNNERS)
+            pthread_cond_signal(&manager->condWaitRefree);
+        printf("[RUNNER %d] I'm ready to start\n", id);
+        pthread_cond_wait(&manager->condWaitRunner, &manager->mutex);
+    }
+    
+    pthread_mutex_unlock(&manager->mutex);
 }
 
 int gotYou(struct manager_t *manager, int id){
-    sem_wait(&manager->mutex);
+    pthread_mutex_lock(&manager->mutex);
 
     if(manager->winner != NONE){
-        sem_post(&manager->mutex);
+        pthread_mutex_unlock(&manager->mutex);
         return 0;
     }
 
     manager->winner = id;
-    sem_post(&manager->semResultRefree);
+    pthread_cond_signal(&manager->condResultRefree);
     printf("[RUNNER %d] Wakey wakey\n", id);
-    sem_post(&manager->mutex);
+    pthread_mutex_unlock(&manager->mutex);
     return 1;
 }
 
 int amISafe(struct manager_t *manager, int id){
-    sem_wait(&manager->mutex);
+    pthread_mutex_lock(&manager->mutex);
 
     if(manager->winner != NONE){
-        sem_post(&manager->mutex);
+        pthread_mutex_unlock(&manager->mutex);
         return 0;
     }
 
     manager->winner = id;
-    sem_post(&manager->semResultRefree);
+    pthread_cond_signal(&manager->condResultRefree);
     printf("[RUNNER %d] Wakey wakey\n", id);
-    sem_post(&manager->mutex);
+    pthread_mutex_unlock(&manager->mutex);
     return 1;
 }
 
 int catchFlag(struct manager_t *manager, int id){
-    sem_wait(&manager->mutex);
+    pthread_mutex_lock(&manager->mutex);
 
     if(manager->whoCaughtFlag == NONE){
         manager->whoCaughtFlag = id;
         printf("[RUNNER %d] I've catch the flag!\n", id);
-        sem_post(&manager->mutex);
+        pthread_mutex_unlock(&manager->mutex);
         return 1;
     }
     
-    sem_post(&manager->mutex);
+    pthread_mutex_unlock(&manager->mutex);
     return 0;
 }
 
